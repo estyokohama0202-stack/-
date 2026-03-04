@@ -11,22 +11,24 @@ CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
 
 history = []
-times = []
+timestamps = []
 
 start_time = None
 max_viewers = 0
+last_graph = time.time()
 
 
 def get_token():
-    url = "https://id.twitch.tv/oauth2/token"
 
-    params = {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "grant_type": "client_credentials"
-    }
+    r = requests.post(
+        "https://id.twitch.tv/oauth2/token",
+        params={
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "client_credentials"
+        }
+    )
 
-    r = requests.post(url, params=params)
     return r.json()["access_token"]
 
 
@@ -37,14 +39,27 @@ def get_viewers(token):
         "Authorization": f"Bearer {token}"
     }
 
-    url = f"https://api.twitch.tv/helix/streams?user_login={CHANNEL}"
-
-    r = requests.get(url, headers=headers).json()
+    r = requests.get(
+        f"https://api.twitch.tv/helix/streams?user_login={CHANNEL}",
+        headers=headers
+    ).json()
 
     if not r["data"]:
         return None
 
     return r["data"][0]["viewer_count"]
+
+
+def get_duration():
+
+    if not start_time:
+        return "0m"
+
+    delta = datetime.now() - start_time
+    h = delta.seconds // 3600
+    m = (delta.seconds % 3600) // 60
+
+    return f"{h}h{m}m"
 
 
 def send_card(viewers, diff):
@@ -59,12 +74,12 @@ def send_card(viewers, diff):
 
             {
                 "name": "👀 現在同接",
-                "value": f"# {viewers}\n({diff:+})",
+                "value": f"**{viewers}**\n{diff:+}",
                 "inline": False
             },
 
             {
-                "name": "📊 最大同接",
+                "name": "📊 最大",
                 "value": str(max_viewers),
                 "inline": True
             },
@@ -75,16 +90,13 @@ def send_card(viewers, diff):
                 "inline": True
             }
 
-        ],
-        "footer": {
-            "text": "Twitch Monitor"
-        }
+        ]
     }
 
     requests.post(WEBHOOK, json={"embeds":[embed]})
 
 
-def send_spike(old, new):
+def send_spike(old,new):
 
     embed = {
         "title": "🚨 急増検知",
@@ -92,47 +104,71 @@ def send_spike(old, new):
         "color": 16753920
     }
 
-    requests.post(WEBHOOK, json={"embeds": [embed]})
+    requests.post(WEBHOOK,json={"embeds":[embed]})
 
 
-def get_duration():
+def make_graph():
 
-    if not start_time:
-        return "0m"
+    if len(history) < 2:
+        return
 
-    delta = datetime.now() - start_time
+    plt.figure(figsize=(10,4))
 
-    h = delta.seconds // 3600
-    m = (delta.seconds % 3600) // 60
+    plt.plot(history,color="#9146FF",linewidth=3)
 
-    return f"{h}h{m}m"
+    plt.fill_between(range(len(history)),history,alpha=0.2,color="#9146FF")
 
-
-def save_graph():
-
-    plt.figure()
-
-    plt.plot(times, history)
+    plt.title("Viewer Trend")
 
     plt.xlabel("Time")
     plt.ylabel("Viewers")
 
+    plt.grid(alpha=0.3)
+
+    plt.tight_layout()
+
     plt.savefig("graph.png")
+
+    plt.close()
 
 
 def send_graph():
 
-    save_graph()
+    make_graph()
 
-    files = {"file": open("graph.png", "rb")}
+    files = {"file":open("graph.png","rb")}
 
-    requests.post(WEBHOOK, files=files)
+    requests.post(WEBHOOK,files=files)
+
+
+def send_report():
+
+    avg = int(sum(history)/len(history))
+
+    embed = {
+
+        "title":"📊 配信終了レポート",
+
+        "fields":[
+
+            {"name":"最大同接","value":str(max_viewers)},
+            {"name":"平均同接","value":str(avg)},
+            {"name":"配信時間","value":get_duration()}
+
+        ]
+
+    }
+
+    requests.post(WEBHOOK,json={"embeds":[embed]})
+
+    send_graph()
 
 
 def main():
 
     global start_time
     global max_viewers
+    global last_graph
 
     token = get_token()
 
@@ -148,41 +184,35 @@ def main():
                 start_time = datetime.now()
 
             history.append(viewers)
-            times.append(len(history))
+            timestamps.append(datetime.now())
 
             if viewers > max_viewers:
                 max_viewers = viewers
 
             diff = viewers - prev
 
-            send_card(viewers, diff)
+            send_card(viewers,diff)
 
             if prev > 0:
 
-                percent = diff / prev
+                percent = diff/prev
 
                 if percent > 0.2:
-                    send_spike(prev, viewers)
+                    send_spike(prev,viewers)
 
             prev = viewers
+
+            if time.time() - last_graph > 1800:
+
+                send_graph()
+
+                last_graph = time.time()
 
         else:
 
             if history:
-                send_graph()
 
-                avg = int(sum(history) / len(history))
-
-                embed = {
-                    "title": "📊 配信終了レポート",
-                    "fields": [
-                        {"name": "最大同接", "value": str(max_viewers)},
-                        {"name": "平均同接", "value": str(avg)},
-                        {"name": "配信時間", "value": get_duration()}
-                    ]
-                }
-
-                requests.post(WEBHOOK, json={"embeds": [embed]})
+                send_report()
 
                 history.clear()
 
