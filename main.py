@@ -70,24 +70,23 @@ def send_card(viewers, diff):
 
             {
                 "name": "📊 現在同時接続者数",
-                "value": f"**{viewers:,}**\n{diff_text}",
+                "value": f"\n## {viewers:,}\n\n{diff_text}",
                 "inline": False
             },
 
             {
                 "name": "📈 最大同時接続者数",
-                "value": f"{max_viewers:,}",
+                "value": f"\n{max_viewers:,}",
                 "inline": False
             }
 
         ],
 
         "footer": {
-            "text": "Twitch Viewer Monitor",
-            "icon_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/xarth/404_user_70x70.png"
+            "text": "Twitch Viewer Monitor"
         }
 
-    }  # ←これが必要
+    }
 
     requests.post(WEBHOOK, json={"embeds":[embed]})
 def send_spike(old, new):
