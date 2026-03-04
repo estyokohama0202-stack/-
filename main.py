@@ -1,136 +1,192 @@
 import requests
 import os
-import json
+import time
 from datetime import datetime
+import matplotlib.pyplot as plt
 
-# ===== 環境変数 =====
+CHANNEL = "dj___shige"
+
+WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
-WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
-USERNAME = "dj___shige"
-DATA_FILE = "viewer_data.json"
+history = []
+times = []
 
-PERCENT_THRESHOLD = 0.20   # 20%急増判定
-MIN_BASE_VIEWERS = 30      # 30人以下は急増判定しない
+start_time = None
+max_viewers = 0
 
 
-# ===== Twitch API =====
-def get_access_token():
-    r = requests.post(
-        "https://id.twitch.tv/oauth2/token",
-        params={
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "client_credentials"
-        }
-    )
+def get_token():
+    url = "https://id.twitch.tv/oauth2/token"
+
+    params = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "grant_type": "client_credentials"
+    }
+
+    r = requests.post(url, params=params)
     return r.json()["access_token"]
 
 
-def get_viewer_count(token):
+def get_viewers(token):
+
     headers = {
         "Client-ID": CLIENT_ID,
         "Authorization": f"Bearer {token}"
     }
 
-    r = requests.get(
-        f"https://api.twitch.tv/helix/streams?user_login={USERNAME}",
-        headers=headers
-    )
+    url = f"https://api.twitch.tv/helix/streams?user_login={CHANNEL}"
 
-    data = r.json()["data"]
+    r = requests.get(url, headers=headers).json()
 
-    if not data:
-        return None  # 配信してない
+    if not r["data"]:
+        return None
 
-    return data[0]["viewer_count"]
+    return r["data"][0]["viewer_count"]
 
 
-# ===== データ保存 =====
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
+def send_card(viewers, diff):
 
-    return {
-        "history": [],
-        "max": 0,
-        "min": 999999,
-        "start_time": None
+    color = 3066993
+
+    if diff < 0:
+        color = 15158332
+
+    embed = {
+        "title": "📺 DJ_SHIGE LIVE監視",
+        "color": color,
+        "fields": [
+            {
+                "name": "👀 現在同接",
+                "value": f"{viewers} ({diff:+})",
+                "inline": False
+            },
+            {
+                "name": "📊 最大同接",
+                "value": str(max_viewers),
+                "inline": True
+            },
+            {
+                "name": "⏱ 配信時間",
+                "value": get_duration(),
+                "inline": True
+            }
+        ],
+        "footer": {
+            "text": "Twitch Monitor"
+        }
     }
 
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+    requests.post(WEBHOOK, json={"embeds": [embed]})
 
 
-# ===== Discord通知 =====
-def notify(message):
-    requests.post(WEBHOOK, json={"content": message})
+def send_spike(old, new):
+
+    embed = {
+        "title": "🚨 急増検知",
+        "description": f"{old} → {new}",
+        "color": 16753920
+    }
+
+    requests.post(WEBHOOK, json={"embeds": [embed]})
 
 
-# ===== メイン処理 =====
+def get_duration():
+
+    if not start_time:
+        return "0m"
+
+    delta = datetime.now() - start_time
+
+    h = delta.seconds // 3600
+    m = (delta.seconds % 3600) // 60
+
+    return f"{h}h{m}m"
+
+
+def save_graph():
+
+    plt.figure()
+
+    plt.plot(times, history)
+
+    plt.xlabel("Time")
+    plt.ylabel("Viewers")
+
+    plt.savefig("graph.png")
+
+
+def send_graph():
+
+    save_graph()
+
+    files = {"file": open("graph.png", "rb")}
+
+    requests.post(WEBHOOK, files=files)
+
+
 def main():
-    token = get_access_token()
-    viewers = get_viewer_count(token)
-    data = load_data()
 
-    # ===== 配信してない場合 =====
-    if viewers is None:
-        if data["history"]:
-            total_change = data["history"][-1] - data["history"][0]
+    global start_time
+    global max_viewers
 
-            notify(
-                f"📴 配信終了\n"
-                f"配信時間: {data['start_time']}〜\n"
-                f"最大同接: {data['max']}\n"
-                f"最小同接: {data['min']}\n"
-                f"総増減: {total_change:+}"
-            )
+    token = get_token()
 
-            save_data({
-                "history": [],
-                "max": 0,
-                "min": 999999,
-                "start_time": None
-            })
+    prev = 0
 
-        return
+    while True:
 
-    # ===== 配信中 =====
-    history = data["history"]
+        viewers = get_viewers(token)
 
-    if not history:
-        data["start_time"] = datetime.now().strftime("%H:%M")
+        if viewers:
 
-    history.append(viewers)
+            if not start_time:
+                start_time = datetime.now()
 
-    # ===== 差分表示 =====
-    if len(history) >= 2:
-        prev = history[-2]
-        diff = viewers - prev
+            history.append(viewers)
+            times.append(len(history))
 
-        notify(f"👀 現在 {viewers}人 ({diff:+})")
+            if viewers > max_viewers:
+                max_viewers = viewers
 
-        # ===== 20%急増判定 =====
-        if prev >= MIN_BASE_VIEWERS:
-            percent_change = diff / prev
+            diff = viewers - prev
 
-            if percent_change >= PERCENT_THRESHOLD:
-                notify(
-                    f"🚨 急増検知！\n"
-                    f"{prev} → {viewers}\n"
-                    f"{percent_change*100:.1f}%増加"
-                )
+            send_card(viewers, diff)
 
-    data["max"] = max(data["max"], viewers)
-    data["min"] = min(data["min"], viewers)
-    data["history"] = history[-300:]  # 履歴制限
+            if prev > 0:
 
-    save_data(data)
+                percent = diff / prev
+
+                if percent > 0.2:
+                    send_spike(prev, viewers)
+
+            prev = viewers
+
+        else:
+
+            if history:
+                send_graph()
+
+                avg = int(sum(history) / len(history))
+
+                embed = {
+                    "title": "📊 配信終了レポート",
+                    "fields": [
+                        {"name": "最大同接", "value": str(max_viewers)},
+                        {"name": "平均同接", "value": str(avg)},
+                        {"name": "配信時間", "value": get_duration()}
+                    ]
+                }
+
+                requests.post(WEBHOOK, json={"embeds": [embed]})
+
+                history.clear()
+
+                start_time = None
+
+        time.sleep(300)
 
 
-if __name__ == "__main__":
-    main()
+main()
