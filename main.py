@@ -3,6 +3,7 @@ import os
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 CHANNEL = "dj___shige"
 
@@ -116,36 +117,51 @@ def make_graph():
     if len(history) < 2:
         return
 
-    plt.figure(figsize=(10,4))
+    plt.figure(figsize=(12,5))
 
-    plt.plot(history, color="#9146FF", linewidth=3)
+    ax = plt.gca()
 
-    plt.fill_between(range(len(history)),
-                     history,
-                     alpha=0.2,
-                     color="#9146FF")
+    ax.plot(timestamps,
+            history,
+            color="#9146FF",
+            linewidth=3)
+
+    ax.fill_between(timestamps,
+                    history,
+                    alpha=0.2,
+                    color="#9146FF")
 
     for i in spikes:
-        plt.scatter(i, history[i],
-                    color="red",
-                    s=140,
-                    zorder=5)
+        ax.scatter(timestamps[i],
+                   history[i],
+                   color="red",
+                   s=120,
+                   zorder=5)
 
     for i in drops:
-        plt.scatter(i, history[i],
-                    color="yellow",
-                    s=140,
-                    zorder=5)
+        ax.scatter(timestamps[i],
+                   history[i],
+                   color="yellow",
+                   s=120,
+                   zorder=5)
 
-    plt.title("Viewer Trend")
-    plt.xlabel("Time")
-    plt.ylabel("Viewers")
+    ax.set_title("Viewer Trend", fontsize=14)
+    ax.set_ylabel("Viewers")
+
+    # 時刻フォーマット
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+
+    # 30分ごと表示
+    ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=30))
+
+    plt.xticks(rotation=45)
 
     plt.grid(alpha=0.3)
 
     plt.tight_layout()
 
     plt.savefig("graph.png")
+
     plt.close()
 
 
@@ -178,7 +194,6 @@ def send_report():
 
     send_graph()
 
-
 def main():
 
     global start_time
@@ -195,11 +210,15 @@ def main():
 
         if viewers:
 
+            # 配信開始検知
             if not start_time:
                 start_time = datetime.now()
 
+            # データ保存
             history.append(viewers)
+            timestamps.append(datetime.now())
 
+            # 最大同接更新
             if viewers > max_viewers:
                 max_viewers = viewers
 
@@ -211,35 +230,41 @@ def main():
 
                 percent = diff / prev
 
+                # 急増
                 if percent > 0.2:
-                    spikes.append(len(history)-1)
+                    spikes.append(len(history) - 1)
                     send_spike(prev, viewers)
 
+                # 急落
                 if percent <= -0.2:
-                    drops.append(len(history)-1)
+                    drops.append(len(history) - 1)
                     send_drop(prev, viewers)
 
             prev = viewers
 
+            # 30分ごとグラフ
             if time.time() - last_graph > 1800:
 
                 send_graph()
-
                 last_graph = time.time()
 
         else:
 
+            # 配信終了
             if history:
 
                 send_report()
 
                 history.clear()
+                timestamps.clear()
                 spikes.clear()
                 drops.clear()
 
                 start_time = None
                 max_viewers = 0
+                prev = 0
 
+        # 5分待機
         time.sleep(300)
 
 
