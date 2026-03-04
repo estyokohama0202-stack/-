@@ -57,13 +57,13 @@ def send_card(viewers, diff):
 
     if diff > 0:
         color = 5763719
-        diff_text = f"🟢 +{diff}"
+        diff_text = f"+{diff}"
     elif diff < 0:
         color = 15548997
-        diff_text = f"🔴 {diff}"
+        diff_text = f"{diff}"
     else:
         color = 9807270
-        diff_text = "±0"
+        diff_text = "0"
 
     embed = {
         "color": color,
@@ -71,14 +71,14 @@ def send_card(viewers, diff):
 
             {
                 "name": "📊 現在同時接続者数",
-                "value": f"# **{viewers:,}**\n{diff_text}",
+                "value": f"**{viewers:,}**\n{diff_text}",
                 "inline": False
             },
 
             {
                 "name": "📈 最大同時接続者数",
                 "value": f"{max_viewers:,}",
-                "inline": True
+                "inline": False
             }
 
         ],
