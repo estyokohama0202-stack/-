@@ -49,37 +49,39 @@ def get_viewers(token):
 
 def send_card(viewers, diff):
 
-    color = 3066993
-
+    color = 5763719
     if diff < 0:
-        color = 15158332
+        color = 15548997
 
     embed = {
-        "title": "📺 DJ_SHIGE LIVE監視",
         "color": color,
         "fields": [
+
             {
                 "name": "👀 現在同接",
-                "value": f"{viewers} ({diff:+})",
+                "value": f"# {viewers}\n({diff:+})",
                 "inline": False
             },
+
             {
                 "name": "📊 最大同接",
                 "value": str(max_viewers),
                 "inline": True
             },
+
             {
                 "name": "⏱ 配信時間",
                 "value": get_duration(),
                 "inline": True
             }
+
         ],
         "footer": {
             "text": "Twitch Monitor"
         }
     }
 
-    requests.post(WEBHOOK, json={"embeds": [embed]})
+    requests.post(WEBHOOK, json={"embeds":[embed]})
 
 
 def send_spike(old, new):
