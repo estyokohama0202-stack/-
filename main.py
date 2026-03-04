@@ -70,7 +70,7 @@ def send_card(viewers, diff):
 
             {
                 "name": "📊 現在同時接続者数",
-                "value": f"\n{viewers:,}\n\n{diff_text}",
+                "value": f"\n\n{viewers:,}\n{diff_text}",
                 "inline": False
             },
 
