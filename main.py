@@ -83,12 +83,11 @@ def send_card(viewers, diff):
 
         ],
 
-        "footer": {
-            "text": "Twitch Viewer Monitor"
-        }
-
-    }
-
+      "footer": {
+    "text": "Twitch Viewer Monitor",
+    "icon_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/xarth/404_user_70x70.png"
+}
+        
     requests.post(WEBHOOK, json={"embeds":[embed]})
 
 def send_spike(old, new):
