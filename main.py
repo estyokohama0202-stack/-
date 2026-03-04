@@ -73,28 +73,21 @@ def send_card(viewers, diff):
         "fields": [
 
             {
-                "name": "👀 現在同接",
+                "name": "🎥 現在同接",
                 "value": f"**{viewers}**\n{diff:+}",
                 "inline": False
             },
 
             {
-                "name": "📊 最大",
+                "name": "📊 最大同接",
                 "value": str(max_viewers),
-                "inline": True
-            },
-
-            {
-                "name": "⏱ 配信時間",
-                "value": get_duration(),
-                "inline": True
+                "inline": False
             }
 
         ]
     }
 
     requests.post(WEBHOOK, json={"embeds":[embed]})
-
 
 def send_spike(old,new):
 
