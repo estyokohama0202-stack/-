@@ -13,8 +13,12 @@ CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
 history = []
 timestamps = []
 
+spikes = []
+drops = []
+
 start_time = None
 max_viewers = 0
+
 last_graph = time.time()
 
 
@@ -50,18 +54,6 @@ def get_viewers(token):
     return r["data"][0]["viewer_count"]
 
 
-def get_duration():
-
-    if not start_time:
-        return "0m"
-
-    delta = datetime.now() - start_time
-    h = delta.seconds // 3600
-    m = (delta.seconds % 3600) // 60
-
-    return f"{h}h{m}m"
-
-
 def send_card(viewers, diff):
 
     color = 5763719
@@ -73,14 +65,14 @@ def send_card(viewers, diff):
         "fields": [
 
             {
-                "name": "🎥 現在同接",
-                "value": f"**{viewers}**\n{diff:+}",
+                "name": "📊 現在同時接続者数",
+                "value": f"## {viewers:,}\n{diff:+}",
                 "inline": False
             },
 
             {
-                "name": "📊 最大同接",
-                "value": str(max_viewers),
+                "name": "📈 最大同時接続者数",
+                "value": f"{max_viewers:,}",
                 "inline": False
             }
 
@@ -89,15 +81,27 @@ def send_card(viewers, diff):
 
     requests.post(WEBHOOK, json={"embeds":[embed]})
 
-def send_spike(old,new):
+
+def send_spike(old, new):
 
     embed = {
-        "title": "🚨 急増検知",
-        "description": f"{old} → {new}",
+        "title": "🚨📈 同接急増検知しました",
+        "description": f"{old:,} → {new:,}",
         "color": 16753920
     }
 
-    requests.post(WEBHOOK,json={"embeds":[embed]})
+    requests.post(WEBHOOK, json={"embeds":[embed]})
+
+
+def send_drop(old, new):
+
+    embed = {
+        "title": "🚨📉 同接急落検知しました",
+        "description": f"{old:,} → {new:,}",
+        "color": 15158332
+    }
+
+    requests.post(WEBHOOK, json={"embeds":[embed]})
 
 
 def make_graph():
@@ -107,12 +111,26 @@ def make_graph():
 
     plt.figure(figsize=(10,4))
 
-    plt.plot(history,color="#9146FF",linewidth=3)
+    plt.plot(history, color="#9146FF", linewidth=3)
 
-    plt.fill_between(range(len(history)),history,alpha=0.2,color="#9146FF")
+    plt.fill_between(range(len(history)),
+                     history,
+                     alpha=0.2,
+                     color="#9146FF")
+
+    for i in spikes:
+        plt.scatter(i, history[i],
+                    color="red",
+                    s=140,
+                    zorder=5)
+
+    for i in drops:
+        plt.scatter(i, history[i],
+                    color="yellow",
+                    s=140,
+                    zorder=5)
 
     plt.title("Viewer Trend")
-
     plt.xlabel("Time")
     plt.ylabel("Viewers")
 
@@ -121,7 +139,6 @@ def make_graph():
     plt.tight_layout()
 
     plt.savefig("graph.png")
-
     plt.close()
 
 
@@ -129,30 +146,28 @@ def send_graph():
 
     make_graph()
 
-    files = {"file":open("graph.png","rb")}
+    files = {"file": open("graph.png", "rb")}
 
-    requests.post(WEBHOOK,files=files)
+    requests.post(WEBHOOK, files=files)
 
 
 def send_report():
 
-    avg = int(sum(history)/len(history))
+    avg = int(sum(history) / len(history))
 
     embed = {
 
-        "title":"📊 配信終了レポート",
+        "title": "📊 配信終了レポート",
 
-        "fields":[
+        "fields": [
 
-            {"name":"最大同接","value":str(max_viewers)},
-            {"name":"平均同接","value":str(avg)},
-            {"name":"配信時間","value":get_duration()}
+            {"name": "最大同接", "value": f"{max_viewers:,}"},
+            {"name": "平均同接", "value": f"{avg:,}"}
 
         ]
-
     }
 
-    requests.post(WEBHOOK,json={"embeds":[embed]})
+    requests.post(WEBHOOK, json={"embeds":[embed]})
 
     send_graph()
 
@@ -177,21 +192,25 @@ def main():
                 start_time = datetime.now()
 
             history.append(viewers)
-            timestamps.append(datetime.now())
 
             if viewers > max_viewers:
                 max_viewers = viewers
 
             diff = viewers - prev
 
-            send_card(viewers,diff)
+            send_card(viewers, diff)
 
             if prev > 0:
 
-                percent = diff/prev
+                percent = diff / prev
 
                 if percent > 0.2:
-                    send_spike(prev,viewers)
+                    spikes.append(len(history)-1)
+                    send_spike(prev, viewers)
+
+                if percent <= -0.2:
+                    drops.append(len(history)-1)
+                    send_drop(prev, viewers)
 
             prev = viewers
 
@@ -208,8 +227,11 @@ def main():
                 send_report()
 
                 history.clear()
+                spikes.clear()
+                drops.clear()
 
                 start_time = None
+                max_viewers = 0
 
         time.sleep(300)
 
