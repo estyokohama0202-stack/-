@@ -52,7 +52,6 @@ def get_viewers(token):
         return None
 
     return r["data"][0]["viewer_count"]
-
 def send_card(viewers, diff):
 
     if diff > 0:
@@ -83,13 +82,14 @@ def send_card(viewers, diff):
 
         ],
 
-      "footer": {
-    "text": "Twitch Viewer Monitor",
-    "icon_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/xarth/404_user_70x70.png"
-}
-        
-    requests.post(WEBHOOK, json={"embeds":[embed]})
+        "footer": {
+            "text": "Twitch Viewer Monitor",
+            "icon_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/xarth/404_user_70x70.png"
+        }
 
+    }  # ←これが必要
+
+    requests.post(WEBHOOK, json={"embeds":[embed]})
 def send_spike(old, new):
 
     embed = {
